@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AroundSet - Mapa de Satélite com Direção</title>
+    <title>AroundSet - Alternar Modo de Mapa</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <style>
         body {
@@ -21,20 +21,12 @@
         }
         #layer-controls {
             position: absolute;
-            top: 20px;
+            top: 220px;
             left: 10px;
             background-color: rgba(0, 0, 0, 0.7);
             padding: 10px;
             border-radius: 5px;
             z-index: 1000;
-        }
-        #layer-controls h4 {
-            margin: 0 0 5px 0;
-            font-size: 14px;
-            color: #ffffff;
-        }
-        #layer-controls input {
-            margin-right: 5px;
         }
         #coordinates-display {
             margin-top: 10px;
@@ -43,7 +35,7 @@
     </style>
 </head>
 <body>
-    <h3>AroundSet</h3>
+    <h3>AroundSet by ACIDHUB</h3>
 
     <!-- Mapa -->
     <div id="map"></div>
@@ -69,29 +61,44 @@
         let poisFound = [];
         const radius = 500; // Raio da geofence
         const trackingIntervalTime = 5000; // Intervalo de rastreamento (5 segundos)
-        let directionMarker; // Para a seta de direção
 
-        // Inicializa o mapa com camadas de satélite e nomes de rua
+        // Inicializa o mapa com camadas de satélite e OSM (OpenStreetMap)
         function initMap() {
             // Camada de satélite (Google Satellite)
             const satelliteLayer = L.tileLayer('http://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
-                maxZoom: 15,
+                maxZoom: 20,
                 subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
                 attribution: '&copy; <a href="https://maps.google.com/">Google Maps</a>'
             });
 
-            // Camada de nomes de rua (OpenStreetMap)
-            const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            // Camada de mapa OSM (OpenStreetMap)
+            const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 maxZoom: 19,
                 attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             });
 
-            // Inicializando o mapa
+            // Camada de modo escuro (CartoDB Dark)
+            const darkModeLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; <a href="https://carto.com/">CartoDB</a>',
+                maxZoom: 19
+            });
+
+            // Inicializando o mapa com satélite
             map = L.map('map', {
                 center: [-23.5505, -46.6333], // Posição inicial em São Paulo
                 zoom: 15,
-                layers: [satelliteLayer, streetLayer] // Inclui as duas camadas
+                layers: [satelliteLayer] // Começa com a camada de satélite
             });
+
+            // Camada de controle para alternar entre Satélite, Modo Escuro e OSM
+            const baseMaps = {
+                "Satélite": satelliteLayer,
+                "OpenStreetMap": osmLayer,
+                "Modo Escuro": darkModeLayer
+            };
+
+            // Adicionando o controle de camadas (BaseLayer)
+            L.control.layers(baseMaps).addTo(map);
 
             geofenceLayer = L.layerGroup().addTo(map); // Camada para a Geofence
             poiLayer = L.layerGroup().addTo(map); // Camada para os PoIs
@@ -147,9 +154,6 @@
 
                     // Buscar PoIs ao redor
                     fetchPois(lat, lon);
-
-                    // Atualizar a direção do usuário
-                    updateDirection(lat, lon);
                 });
             }, trackingIntervalTime);
         }
@@ -166,7 +170,7 @@
             }).addTo(geofenceLayer);
         }
 
-        // Função para buscar PoIs ao redor do usuário (incluindo padarias, confeitarias, academias, postos de combustível)
+        // Função para buscar PoIs ao redor do usuário
         async function fetchPois(lat, lon) {
             const categories = [
                 'restaurant', 'pharmacy', 'cafe', 'bar', 'bus_station',
@@ -247,30 +251,6 @@
             marker.on('mouseover', function() {
                 marker.openPopup();
             });
-        }
-
-        // Função para detectar a direção do usuário usando a orientação do dispositivo
-        function updateDirection(lat, lon) {
-            if (!directionMarker) {
-                // Se o marcador de direção não existir, cria um
-                directionMarker = L.marker([lat, lon], {
-                    icon: L.divIcon({
-                        className: 'direction-icon',
-                        html: '🡇' // Ícone de seta para indicar a direção
-                    })
-                }).addTo(map);
-            } else {
-                // Atualiza a posição do marcador de direção
-                directionMarker.setLatLng([lat, lon]);
-            }
-
-            // Usa a orientação do dispositivo para detectar a direção
-            if (window.DeviceOrientationEvent) {
-                window.addEventListener('deviceorientation', function(event) {
-                    const heading = event.alpha; // Alpha é a direção da bússola
-                    directionMarker.setRotationAngle(heading); // Rotaciona a seta para a direção correta
-                });
-            }
         }
 
         initMap();
