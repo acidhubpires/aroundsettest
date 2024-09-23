@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AroundSet</title>
+    <title>AroundSet - Mapa de Satélite com Direção</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <style>
         body {
@@ -21,7 +21,7 @@
         }
         #layer-controls {
             position: absolute;
-            top: 220px;
+            top: 20px;
             left: 10px;
             background-color: rgba(0, 0, 0, 0.7);
             padding: 10px;
@@ -43,7 +43,7 @@
     </style>
 </head>
 <body>
-    <h3>AroundSet</h3>
+    <h3>AroundSet - Mapa de Satélite com Direção do Usuário</h3>
 
     <!-- Mapa -->
     <div id="map"></div>
@@ -69,22 +69,32 @@
         let poisFound = [];
         const radius = 500; // Raio da geofence
         const trackingIntervalTime = 5000; // Intervalo de rastreamento (5 segundos)
+        let directionMarker; // Para a seta de direção
 
+        // Inicializa o mapa com camadas de satélite e nomes de rua
         function initMap() {
+            // Camada de satélite (Google Satellite)
+            const satelliteLayer = L.tileLayer('http://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+                maxZoom: 20,
+                subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+                attribution: '&copy; <a href="https://maps.google.com/">Google Maps</a>'
+            });
+
+            // Camada de nomes de rua (OpenStreetMap)
+            const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            });
+
+            // Inicializando o mapa
             map = L.map('map', {
                 center: [-23.5505, -46.6333], // Posição inicial em São Paulo
                 zoom: 15,
-                layers: [
-                    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-                        attribution: '&copy; <a href="https://carto.com/">CartoDB</a>',
-                        maxZoom: 19
-                    })
-                ]
+                layers: [satelliteLayer, streetLayer] // Inclui as duas camadas
             });
 
             geofenceLayer = L.layerGroup().addTo(map); // Camada para a Geofence
             poiLayer = L.layerGroup().addTo(map); // Camada para os PoIs
-
             trackingPolyline = L.polyline(trackPoints, { color: 'blue' }).addTo(map); // Polilinha para rastreamento
 
             // Controle das camadas Geofence, Caminhamento e PoIs
@@ -137,6 +147,9 @@
 
                     // Buscar PoIs ao redor
                     fetchPois(lat, lon);
+
+                    // Atualizar a direção do usuário
+                    updateDirection(lat, lon);
                 });
             }, trackingIntervalTime);
         }
@@ -153,12 +166,13 @@
             }).addTo(geofenceLayer);
         }
 
-        // Função para buscar PoIs ao redor do usuário
+        // Função para buscar PoIs ao redor do usuário (incluindo padarias, confeitarias, academias, postos de combustível)
         async function fetchPois(lat, lon) {
             const categories = [
                 'restaurant', 'pharmacy', 'cafe', 'bar', 'bus_station',
                 'bank', 'post_office', 'supermarket', 'parking', 'fuel',
-                'hotel', 'library', 'cinema', 'police', 'hospital'
+                'hotel', 'library', 'cinema', 'police', 'hospital',
+                'bakery', 'confectionery', 'fitness_centre', 'gym'
             ];
             const query = `
                 [out:json];
@@ -199,7 +213,11 @@
                         library: 'violet',
                         cinema: 'teal',
                         police: 'magenta',
-                        hospital: 'darkblue'
+                        hospital: 'darkblue',
+                        bakery: 'orange',
+                        confectionery: 'pink',
+                        fitness_centre: 'lime',
+                        gym: 'darkgreen'
                     }[type] || 'gray';
 
                     createCircleMarker(poiLat, poiLon, color, name);
@@ -229,6 +247,30 @@
             marker.on('mouseover', function() {
                 marker.openPopup();
             });
+        }
+
+        // Função para detectar a direção do usuário usando a orientação do dispositivo
+        function updateDirection(lat, lon) {
+            if (!directionMarker) {
+                // Se o marcador de direção não existir, cria um
+                directionMarker = L.marker([lat, lon], {
+                    icon: L.divIcon({
+                        className: 'direction-icon',
+                        html: '🡇' // Ícone de seta para indicar a direção
+                    })
+                }).addTo(map);
+            } else {
+                // Atualiza a posição do marcador de direção
+                directionMarker.setLatLng([lat, lon]);
+            }
+
+            // Usa a orientação do dispositivo para detectar a direção
+            if (window.DeviceOrientationEvent) {
+                window.addEventListener('deviceorientation', function(event) {
+                    const heading = event.alpha; // Alpha é a direção da bússola
+                    directionMarker.setRotationAngle(heading); // Rotaciona a seta para a direção correta
+                });
+            }
         }
 
         initMap();
