@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AroundSet</title>
+    <title>AroundSet - Alternar Modo de Mapa</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <style>
         body {
@@ -28,14 +28,6 @@
             border-radius: 5px;
             z-index: 1000;
         }
-        #layer-controls h4 {
-            margin: 0 0 5px 0;
-            font-size: 14px;
-            color: #ffffff;
-        }
-        #layer-controls input {
-            margin-right: 5px;
-        }
         #coordinates-display {
             margin-top: 10px;
             font-size: 12px;
@@ -43,7 +35,7 @@
     </style>
 </head>
 <body>
-    <h3>AroundSet</h3>
+    <h3>AroundSet by ACIDHUB</h3>
 
     <!-- Mapa -->
     <div id="map"></div>
@@ -70,21 +62,46 @@
         const radius = 500; // Raio da geofence
         const trackingIntervalTime = 5000; // Intervalo de rastreamento (5 segundos)
 
+        // Inicializa o mapa com camadas de satélite e OSM (OpenStreetMap)
         function initMap() {
+            // Camada de satélite (Google Satellite)
+            const satelliteLayer = L.tileLayer('http://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+                maxZoom: 20,
+                subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+                attribution: '&copy; <a href="https://maps.google.com/">Google Maps</a>'
+            });
+
+            // Camada de mapa OSM (OpenStreetMap)
+            const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            });
+
+            // Camada de modo escuro (CartoDB Dark)
+            const darkModeLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; <a href="https://carto.com/">CartoDB</a>',
+                maxZoom: 19
+            });
+
+            // Inicializando o mapa com satélite
             map = L.map('map', {
                 center: [-23.5505, -46.6333], // Posição inicial em São Paulo
                 zoom: 15,
-                layers: [
-                    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-                        attribution: '&copy; <a href="https://carto.com/">CartoDB</a>',
-                        maxZoom: 19
-                    })
-                ]
+                layers: [satelliteLayer] // Começa com a camada de satélite
             });
+
+            // Camada de controle para alternar entre Satélite, Modo Escuro e OSM
+            const baseMaps = {
+                "Satélite": satelliteLayer,
+                "OpenStreetMap": osmLayer,
+                "Modo Escuro": darkModeLayer
+            };
+
+            // Adicionando o controle de camadas (BaseLayer)
+            L.control.layers(baseMaps).addTo(map);
 
             geofenceLayer = L.layerGroup().addTo(map); // Camada para a Geofence
             poiLayer = L.layerGroup().addTo(map); // Camada para os PoIs
-
             trackingPolyline = L.polyline(trackPoints, { color: 'blue' }).addTo(map); // Polilinha para rastreamento
 
             // Controle das camadas Geofence, Caminhamento e PoIs
@@ -158,7 +175,8 @@
             const categories = [
                 'restaurant', 'pharmacy', 'cafe', 'bar', 'bus_station',
                 'bank', 'post_office', 'supermarket', 'parking', 'fuel',
-                'hotel', 'library', 'cinema', 'police', 'hospital'
+                'hotel', 'library', 'cinema', 'police', 'hospital',
+                'bakery', 'confectionery', 'fitness_centre', 'gym'
             ];
             const query = `
                 [out:json];
@@ -199,7 +217,11 @@
                         library: 'violet',
                         cinema: 'teal',
                         police: 'magenta',
-                        hospital: 'darkblue'
+                        hospital: 'darkblue',
+                        bakery: 'orange',
+                        confectionery: 'pink',
+                        fitness_centre: 'lime',
+                        gym: 'darkgreen'
                     }[type] || 'gray';
 
                     createCircleMarker(poiLat, poiLon, color, name);

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AroundSet - Alternar Modo de Mapa</title>
+    <title>AroundSet - Rastreamento Automático</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <style>
         body {
@@ -32,6 +32,16 @@
             margin-top: 10px;
             font-size: 12px;
         }
+        #download-btn {
+            display: none;
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #333;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -51,60 +61,38 @@
             <p id="lat-display">Lat: -</p>
             <p id="lon-display">Lon: -</p>
         </div>
+        <button id="stop-tracking-btn">Encerrar Rastreamento</button>
+        <button id="download-btn">Baixar GeoJSON</button>
     </div>
 
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     <script>
         let map, geofenceLayer, poiLayer, geofenceCircle;
-        let trackingPolyline, trackingInterval, trackPoints = [];
-        let poisFound = [];
-        const radius = 500; // Raio da geofence
-        const trackingIntervalTime = 5000; // Intervalo de rastreamento (5 segundos)
+        let trackingPolyline, trackPoints = [], poisFound = [];
+        let trackingInterval, poiInterval;
+        const trackingIntervalTime = 10000; // Capturar coordenadas a cada 10 segundos
+        const poiSearchIntervalTime = 300000; // Pesquisa de POI a cada 5 minutos
+        const searchRadius = 2500; // Raio de busca para POIs
+        const geofenceRadius = 100; // Raio da geofence
+        let geofenceCenter = null; // Centro inicial da geofence
 
-        // Inicializa o mapa com camadas de satélite e OSM (OpenStreetMap)
+        // Inicializa o mapa com OSM e centraliza na posição inicial do usuário
         function initMap() {
-            // Camada de satélite (Google Satellite)
-            const satelliteLayer = L.tileLayer('http://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
-                maxZoom: 20,
-                subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
-                attribution: '&copy; <a href="https://maps.google.com/">Google Maps</a>'
-            });
-
-            // Camada de mapa OSM (OpenStreetMap)
             const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 maxZoom: 19,
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                attribution: '&copy; OpenStreetMap contributors'
             });
 
-            // Camada de modo escuro (CartoDB Dark)
-            const darkModeLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-                attribution: '&copy; <a href="https://carto.com/">CartoDB</a>',
-                maxZoom: 19
-            });
-
-            // Inicializando o mapa com satélite
             map = L.map('map', {
-                center: [-23.5505, -46.6333], // Posição inicial em São Paulo
                 zoom: 15,
-                layers: [satelliteLayer] // Começa com a camada de satélite
+                layers: [osmLayer] // Apenas camada OSM
             });
-
-            // Camada de controle para alternar entre Satélite, Modo Escuro e OSM
-            const baseMaps = {
-                "Satélite": satelliteLayer,
-                "OpenStreetMap": osmLayer,
-                "Modo Escuro": darkModeLayer
-            };
-
-            // Adicionando o controle de camadas (BaseLayer)
-            L.control.layers(baseMaps).addTo(map);
 
             geofenceLayer = L.layerGroup().addTo(map); // Camada para a Geofence
             poiLayer = L.layerGroup().addTo(map); // Camada para os PoIs
             trackingPolyline = L.polyline(trackPoints, { color: 'blue' }).addTo(map); // Polilinha para rastreamento
 
-            // Controle das camadas Geofence, Caminhamento e PoIs
             document.getElementById('toggle-geofence-layer').addEventListener('change', function(e) {
                 if (e.target.checked) {
                     map.addLayer(geofenceLayer);
@@ -129,42 +117,50 @@
                 }
             });
 
-            // Iniciar rastreamento e geofence
-            startTrackingAndGeofence();
+            document.getElementById('stop-tracking-btn').addEventListener('click', stopTracking);
+
+            // Iniciar rastreamento automaticamente
+            startTracking();
         }
 
-        // Função para capturar a posição atual do usuário e iniciar o rastreamento e geofence
-        function startTrackingAndGeofence() {
+        // Inicia o rastreamento automático e centraliza no usuário
+        function startTracking() {
             trackingInterval = setInterval(() => {
                 navigator.geolocation.getCurrentPosition(position => {
                     const lat = position.coords.latitude;
                     const lon = position.coords.longitude;
 
-                    // Atualizar as coordenadas no display
+                    // Atualiza as coordenadas no display
                     document.getElementById('lat-display').textContent = `Lat: ${lat.toFixed(5)}`;
                     document.getElementById('lon-display').textContent = `Lon: ${lon.toFixed(5)}`;
 
-                    // Atualizar polilinha do caminhamento
+                    // Centralizar o mapa na posição inicial do usuário na primeira vez
+                    if (!geofenceCenter) {
+                        geofenceCenter = [lat, lon];
+                        map.setView([lat, lon], 15); // Centraliza o mapa
+                        createGeofence(lat, lon); // Cria a geofence
+                    }
+
+                    // Atualiza polilinha do caminhamento
                     trackPoints.push([lat, lon]);
                     trackingPolyline.setLatLngs(trackPoints);
 
-                    // Atualizar mapa e geofence
-                    map.setView([lat, lon], 15);
-                    updateGeofence(lat, lon);
-
-                    // Buscar PoIs ao redor
-                    fetchPois(lat, lon);
+                    // Checa se o usuário está fora da geofence e inicia a busca de POIs
+                    const distanceFromGeofence = map.distance(geofenceCenter, [lat, lon]);
+                    if (distanceFromGeofence > geofenceRadius) {
+                        if (!poiInterval) {
+                            // Executar busca de POIs a cada 5 minutos
+                            poiInterval = setInterval(() => fetchPois(lat, lon), poiSearchIntervalTime);
+                        }
+                    }
                 });
             }, trackingIntervalTime);
         }
 
-        // Função para atualizar a geofence conforme o usuário se move
-        function updateGeofence(lat, lon) {
-            if (geofenceCircle) {
-                geofenceLayer.removeLayer(geofenceCircle); // Remove geofence anterior
-            }
+        // Função para criar a geofence
+        function createGeofence(lat, lon) {
             geofenceCircle = L.circle([lat, lon], {
-                radius: radius,
+                radius: geofenceRadius,
                 color: 'red',
                 fillOpacity: 0.2
             }).addTo(geofenceLayer);
@@ -181,7 +177,7 @@
             const query = `
                 [out:json];
                 (
-                    ${categories.map(type => `node["amenity"="${type}"](around:${radius},${lat},${lon});`).join('')}
+                    ${categories.map(type => `node["amenity"="${type}"](around:${searchRadius},${lat},${lon});`).join('')}
                 );
                 out center;
             `;
@@ -201,7 +197,6 @@
                     const name = poi.tags.name || 'Sem nome';
                     const type = poi.tags.amenity || 'Desconhecido';
 
-                    // Colorir os marcadores com base na categoria
                     const color = {
                         restaurant: 'green',
                         pharmacy: 'blue',
@@ -247,10 +242,58 @@
                 marker.bindPopup(`<b>${name}</b>`);
             }
 
-            // Exibe o popup ao passar o mouse
             marker.on('mouseover', function() {
                 marker.openPopup();
             });
+        }
+
+        // Função para encerrar o rastreamento
+        function stopTracking() {
+            clearInterval(trackingInterval);
+            clearInterval(poiInterval);
+            generateGeoJSON();
+        }
+
+        // Função para gerar o GeoJSON e torná-lo disponível para download
+        function generateGeoJSON() {
+            const geojson = {
+                type: "FeatureCollection",
+                features: [
+                    {
+                        type: "Feature",
+                        geometry: {
+                            type: "LineString",
+                            coordinates: trackPoints.map(point => [point[1], point[0]])
+                        },
+                        properties: {
+                            type: "Caminhamento"
+                        }
+                    },
+                    ...poisFound.map(poi => ({
+                        type: "Feature",
+                        geometry: {
+                            type: "Point",
+                            coordinates: [poi.lon || poi.center.lon, poi.lat || poi.center.lat]
+                        },
+                        properties: {
+                            name: poi.tags.name || 'Sem nome',
+                            type: poi.tags.amenity || 'Desconhecido'
+                        }
+                    }))
+                ]
+            };
+
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(geojson, null, 2));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", "rastreio_pois.geojson");
+
+            // Exibir botão de download
+            const downloadBtn = document.getElementById('download-btn');
+            downloadBtn.style.display = "block";
+            downloadBtn.onclick = () => {
+                downloadAnchorNode.click();
+            };
         }
 
         initMap();
